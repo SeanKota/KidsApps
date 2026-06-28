@@ -1,0 +1,122 @@
+.home-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 20px 0;
+  animation: fadeIn 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.home-header {
+  text-align: center;
+  margin-bottom: 50px;
+}
+
+.home-title {
+  font-size: 3.5rem;
+  color: var(--text-color);
+  font-weight: 500;
+  margin-bottom: 16px;
+  letter-spacing: 0.1rem;
+}
+
+.home-subtitle {
+  font-size: 1.5rem;
+  color: var(--text-muted);
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 40px;
+  width: 100%;
+  max-width: 1000px;
+  padding: 10px;
+  justify-content: center;
+}
+
+.content-card {
+  background-color: var(--card-bg);
+  border: 4px solid var(--text-color);
+  border-radius: 32px;
+  padding: 40px 30px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 8px 0 var(--text-color);
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.content-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 16px 0 var(--text-color);
+  background-color: #fdfcf9;
+}
+
+.content-card:active {
+  transform: translateY(6px);
+  box-shadow: 0 2px 0 var(--text-color);
+}
+
+.card-icon {
+  font-size: 5rem;
+  line-height: 1;
+  display: inline-block;
+  animation: float-slow 5s ease-in-out infinite;
+}
+
+.content-card:hover .card-icon {
+  animation: float-slow 2s ease-in-out infinite;
+}
+
+.card-title {
+  font-size: 2.2rem;
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.card-desc {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .home-title {
+    font-size: 2.5rem;
+  }
+  
+  .home-subtitle {
+    font-size: 1.1rem;
+  }
+
+  .cards-grid {
+    grid-template-columns: 1fr;
+    gap: 30px;
+    padding: 0 20px;
+  }
+
+  .content-card {
+    padding: 30px 20px;
+    border-radius: 24px;
+  }
+
+  .card-icon {
+    font-size: 4rem;
+  }
+
+  .card-title {
+    font-size: 1.8rem;
+  }
+
+  .card-desc {
+    font-size: 1rem;
+  }
+}
