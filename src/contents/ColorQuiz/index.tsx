@@ -153,11 +153,6 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const [collectedColors, setCollectedColors] = useState<CollectedColor[]>([]);
   const [selectedImage, setSelectedImage] = useState<{src: string; alt: string} | null>(null);
 
-  // Hunt phase state
-  const [huntActive, setHuntActive] = useState<boolean>(false);
-  const [huntTimeLeft, setHuntTimeLeft] = useState<number>(30);
-  const huntTimerRef = useRef<number | null>(null);
-
   // Scan phase state
   const [scanActive, setScanActive] = useState<boolean>(false);
   const [scanSuccess, setScanSuccess] = useState<boolean>(false);
@@ -194,26 +189,6 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
       sound.playReveal();
     }
   }, [showText]);
-
-  // Hunt countdown timer
-  useEffect(() => {
-    if (huntActive) {
-      setHuntTimeLeft(30);
-      huntTimerRef.current = window.setInterval(() => {
-        setHuntTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(huntTimerRef.current!);
-            setHuntActive(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (huntTimerRef.current) clearInterval(huntTimerRef.current);
-    };
-  }, [huntActive]);
 
   // Discussion sound effect
   useEffect(() => {
@@ -304,7 +279,6 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
       setCurrentColorIndex(rainbowOrder[nextCount]);
     }
 
-    setHuntActive(false);
     setScanActive(false);
     setScanSuccess(false);
   };
@@ -314,14 +288,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
     onBackToHome();
   };
 
-  const handleHuntSkip = () => {
-    sound.playPop();
-    setHuntActive(false);
-    handleNext();
-  };
-
   const handleFoundClick = () => {
-    setHuntActive(false);
     setScanActive(true);
   };
 
@@ -349,7 +316,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   // User clicks "探しにいく！" on the answer reveal screen
   const handleStartHunt = () => {
     sound.playPop();
-    setHuntActive(true);
+    handleFoundClick();
   };
 
   const handlePlayAreaClick = (e: React.MouseEvent) => {
@@ -405,23 +372,6 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
           )}
           <div className="discussion-controls">
             <button className="discussion-button" onClick={handleCloseDiscussion}>おわる（ほーむへ）🏠</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Hunt screen ──────────────────────────────────────────────────────────
-  if (huntActive) {
-    return (
-      <div className="color-quiz-container fade-in">
-        <div className="hunt-screen">
-          <div className="hunt-color-preview" style={{ backgroundColor: currentColor.hex }} />
-          <h2 className="hunt-message">おへやの なかで<br />「{currentColor.name}いろ」を<br />さがしてきてね！</h2>
-          <div className="hunt-timer">⏱️ {huntTimeLeft}びょう</div>
-          <div className="hunt-controls">
-            <button className="hunt-button" onClick={handleFoundClick}>みつけた！ カメラでみせる 📷</button>
-            <button className="hunt-button secondary" onClick={handleHuntSkip}>パスする ➔</button>
           </div>
         </div>
       </div>
