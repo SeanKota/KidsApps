@@ -90,6 +90,39 @@ class AudioSynth {
     }
   }
 
+  playClap() {
+    const ctx = this.init();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const bufferSize = ctx.sampleRate * 0.14;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+      }
+
+      const noise = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const gainNode = ctx.createGain();
+      noise.buffer = buffer;
+      noise.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(1400, now);
+      gainNode.gain.setValueAtTime(0.0001, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.23, now + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+      noise.start(now);
+      noise.stop(now + 0.19);
+    } catch (e) {
+      console.warn('Failed to play clap sound:', e);
+    }
+  }
+
   // Play a warm, flute-like tone sequence for discussion time
   playDiscuss() {
     const ctx = this.init();

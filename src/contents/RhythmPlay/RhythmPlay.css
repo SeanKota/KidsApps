@@ -34,7 +34,7 @@
 
 .controls-card {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
 .control-block h3 {
@@ -64,22 +64,9 @@
   color: white;
 }
 
-.hint-text {
-  margin-top: 10px;
+.hint-text, .auto-note {
   color: var(--text-muted);
   font-size: 1rem;
-}
-
-.tempo-label-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-input[type='range'] {
-  width: 100%;
-  accent-color: var(--accent-color);
 }
 
 .control-actions {
@@ -127,8 +114,8 @@ input[type='range'] {
   transition: transform 0.2s ease;
 }
 
-.clap-zone.burst {
-  transform: scale(1.03);
+.clap-zone.active {
+  transform: scale(1.02);
 }
 
 .phase-label {

@@ -3,54 +3,36 @@ import { sound } from '../../utils/sound';
 import './RhythmPlay.css';
 
 type Difficulty = 'easy' | 'normal' | 'hard' | 'insane';
-type RhythmStyle = 'four-four' | 'three-four' | 'odd-meter' | 'poly' | 'ethnic';
+type SessionPhase = 'idle' | 'countdown' | 'demo' | 'copy' | 'finished';
 
 interface RhythmPreset {
-  id: RhythmStyle;
-  label: string;
-  description: string;
   pattern: number[];
+  tempo: number;
+  label: string;
 }
 
-const RHYTHM_PRESETS: RhythmPreset[] = [
-  {
-    id: 'four-four',
-    label: '4/4',
-    description: 'おなじみの 4つぶん',
-    pattern: [1, 0, 1, 0]
-  },
-  {
-    id: 'three-four',
-    label: '3/4',
-    description: 'きらきら ワルツみたい',
-    pattern: [1, 0, 0]
-  },
-  {
-    id: 'odd-meter',
-    label: '5/8',
-    description: 'ちょっと へんてこな かたち',
-    pattern: [1, 0, 1, 0, 1]
-  },
-  {
-    id: 'poly',
-    label: 'ポリリズム',
-    description: '2つの うごきを いっしょに',
-    pattern: [1, 0, 0, 1, 0, 0]
-  },
-  {
-    id: 'ethnic',
-    label: 'みんぞく',
-    description: 'にんじんの たねみたいな きざみ',
-    pattern: [1, 0, 1, 0, 0, 1]
-  }
-];
-
-const DIFFICULTY_META: Record<Difficulty, { label: string; tempo: number; hint: string }> = {
-  easy: { label: 'かんたん', tempo: 76, hint: 'ゆっくり いこう' },
-  normal: { label: 'ふつう', tempo: 96, hint: 'ちょうど いい きもち' },
-  hard: { label: 'むずかしい', tempo: 116, hint: 'ちょっと せまい りズム' },
-  insane: { label: 'おに', tempo: 140, hint: 'たくさん たたこう' }
+const DIFFICULTY_META: Record<Difficulty, { label: string; hint: string; tempo: number }> = {
+  easy: { label: 'かんたん', hint: 'ゆっくり いこう', tempo: 72 },
+  normal: { label: 'ふつう', hint: 'ちょうど いい きもち', tempo: 88 },
+  hard: { label: 'むずかしい', hint: 'ちょっと せまい りズム', tempo: 104 },
+  insane: { label: 'おに', hint: 'たくさん たたこう', tempo: 124 }
 };
+
+function buildSessionPlan(difficulty: Difficulty): RhythmPreset[] {
+  if (difficulty === 'easy') {
+    return [
+      { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4' },
+      { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4' }
+    ];
+  }
+
+  return [
+    { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4' },
+    { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ' },
+    { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4' },
+    { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく' }
+  ];
+}
 
 interface RhythmPlayProps {
   onBackToHome: () => void;
@@ -58,91 +40,139 @@ interface RhythmPlayProps {
 
 const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
-  const [style, setStyle] = useState<RhythmStyle>('four-four');
-  const [tempo, setTempo] = useState<number>(DIFFICULTY_META.easy.tempo);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentMeasure, setCurrentMeasure] = useState(0);
-  const [currentBeat, setCurrentBeat] = useState(0);
-  const [score, setScore] = useState(0);
-  const [feedback, setFeedback] = useState('スタートして りズムを たたこう');
-  const [showSummary, setShowSummary] = useState(false);
-  const [clapBurst, setClapBurst] = useState(false);
-  const [completedRounds, setCompletedRounds] = useState(0);
+  const [phase, setPhase] = useState<SessionPhase>('idle');
+  const [countdownValue, setCountdownValue] = useState<number | 'スタート'>(3);
+  const [message, setMessage] = useState('むずかしさを えらんでね');
+  const [currentPreset, setCurrentPreset] = useState<RhythmPreset>(buildSessionPlan('easy')[0]);
+  const [activeBeat, setActiveBeat] = useState(-1);
+  const [tapCount, setTapCount] = useState(0);
+  const timerRef = useRef<number | null>(null);
 
-  const beatStartRef = useRef<number | null>(null);
-  const sequenceLengthRef = useRef(0);
-
-  const selectedPreset = useMemo(
-    () => RHYTHM_PRESETS.find((item) => item.id === style) ?? RHYTHM_PRESETS[0],
-    [style]
-  );
+  const sessionPlan = useMemo(() => buildSessionPlan(difficulty), [difficulty]);
 
   useEffect(() => {
-    if (!isPlaying) return undefined;
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        window.clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
-    sequenceLengthRef.current = selectedPreset.pattern.length * 2;
-    let step = 0;
-    const intervalMs = Math.round(60000 / tempo);
-    const timer = window.setInterval(() => {
-      if (step >= sequenceLengthRef.current) {
-        window.clearInterval(timer);
-        setIsPlaying(false);
-        setShowSummary(true);
-        setCompletedRounds((prev) => prev + 1);
+  const clearTimer = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const playPattern = (preset: RhythmPreset, onComplete: () => void) => {
+    clearTimer();
+    setActiveBeat(-1);
+    let beatIndex = 0;
+    const stepMs = Math.max(360, Math.round(60000 / preset.tempo / 2));
+
+    const tick = () => {
+      if (beatIndex >= preset.pattern.length) {
+        clearTimer();
+        onComplete();
         return;
       }
 
-      const measure = Math.floor(step / selectedPreset.pattern.length);
-      const beat = step % selectedPreset.pattern.length;
-      const isStrong = selectedPreset.pattern[beat] === 1;
+      setActiveBeat(beatIndex);
+      sound.playPop();
+      beatIndex += 1;
+    };
 
-      setCurrentMeasure(measure);
-      setCurrentBeat(beat);
-      beatStartRef.current = performance.now();
-      setFeedback(measure === 0 ? 'おてほんの 1小節' : 'みんなで まねする');
+    tick();
+    timerRef.current = window.setInterval(tick, stepMs);
+  };
 
-      if (isStrong) {
-        sound.playPop();
-      } else {
-        sound.playPop();
+  const runCountdown = (instruction: string, onComplete: () => void) => {
+    clearTimer();
+    setPhase('countdown');
+    setMessage(instruction);
+    let count = 3;
+
+    const showNext = () => {
+      if (count === 0) {
+        setCountdownValue('スタート');
+        timerRef.current = window.setTimeout(() => {
+          onComplete();
+        }, 700);
+        return;
       }
 
-      step += 1;
-    }, intervalMs);
+      setCountdownValue(count);
+      count -= 1;
+      timerRef.current = window.setTimeout(showNext, 700);
+    };
 
-    return () => window.clearInterval(timer);
-  }, [isPlaying, selectedPreset, tempo]);
+    showNext();
+  };
 
-  const handleStart = () => {
-    setIsPlaying(true);
-    setShowSummary(false);
-    setScore(0);
-    setCurrentMeasure(0);
-    setCurrentBeat(0);
-    setFeedback('はじめるよ！ まずは おてほん');
-    beatStartRef.current = null;
+  const startSession = () => {
+    clearTimer();
+    setPhase('countdown');
+    setTapCount(0);
+    setActiveBeat(-1);
+    setMessage('おてほん');
+    setCurrentPreset(sessionPlan[0]);
+
+    const startDemo = (index: number) => {
+      const preset = sessionPlan[index];
+      setCurrentPreset(preset);
+      setMessage('おてほん');
+      setCountdownValue('スタート');
+      setPhase('demo');
+      playPattern(preset, () => {
+        const nextIndex = index + 1;
+        if (nextIndex >= sessionPlan.length) {
+          setPhase('finished');
+          setMessage('うまくできたかな？');
+          setCountdownValue('スタート');
+          return;
+        }
+
+        runCountdown('まねしてみてね', () => {
+          setPhase('copy');
+          setMessage('まねしてみてね');
+          setCountdownValue('スタート');
+          playPattern(preset, () => {
+            startDemo(nextIndex);
+          });
+        });
+      });
+    };
+
+    runCountdown('おてほん', () => {
+      setPhase('demo');
+      startDemo(0);
+    });
   };
 
   const handleClap = () => {
-    if (!isPlaying || beatStartRef.current === null) {
-      setFeedback('まだ りズムが はじまってないよ');
+    if (phase !== 'copy') {
+      setMessage('まだ まねしてみてねの じかんじゃないよ');
       return;
     }
 
-    const elapsed = performance.now() - beatStartRef.current;
-    if (elapsed < 350) {
-      setScore((prev) => prev + 1);
-      setFeedback('ぴったり！');
-      setClapBurst(true);
-      window.setTimeout(() => setClapBurst(false), 220);
-    } else {
-      setFeedback('ちょっと ずれたよ');
-    }
+    sound.playClap();
+    setTapCount((prev) => prev + 1);
+    setMessage('チャ！');
+    window.setTimeout(() => {
+      setMessage('まねしてみてね');
+    }, 250);
   };
 
   const handleDifficultyChange = (next: Difficulty) => {
     setDifficulty(next);
-    setTempo(DIFFICULTY_META[next].tempo);
+    setMessage(`${DIFFICULTY_META[next].label}で いこう`);
+    setPhase('idle');
+    clearTimer();
+    setCountdownValue(3);
+    setActiveBeat(-1);
   };
 
   return (
@@ -151,8 +181,8 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
         <p className="eyebrow">リズムあそび</p>
         <h2>リズムに あわせて てを たたこう</h2>
         <p className="intro-text">
-          1小節は おてほん、1小節は みんなで まねするよ。<br />
-          かんたん・ふつう・むずかしい・おにから えらべるよ。
+          かんたんでは 2つの りズムを くり返すよ。<br />
+          ふつう いじょうは 4パターンで ちょうせんするよ。
         </p>
       </section>
 
@@ -173,39 +203,13 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
           <p className="hint-text">{DIFFICULTY_META[difficulty].hint}</p>
         </div>
 
-        <div className="control-block">
-          <h3>りズムの かたち</h3>
-          <div className="chip-row">
-            {RHYTHM_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                className={`chip-button ${style === preset.id ? 'active' : ''}`}
-                onClick={() => setStyle(preset.id)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <p className="hint-text">{selectedPreset.description}</p>
-        </div>
-
-        <div className="control-block tempo-block">
-          <div className="tempo-label-row">
-            <h3>テンポ</h3>
-            <span>{tempo} BPM</span>
-          </div>
-          <input
-            type="range"
-            min="70"
-            max="150"
-            value={tempo}
-            onChange={(event) => setTempo(Number(event.target.value))}
-          />
+        <div className="control-block auto-note">
+          <p>リズム・強弱・テンポは すべて じどうで えらばれるよ。</p>
         </div>
 
         <div className="control-actions">
-          <button className="primary-button" onClick={handleStart}>
-            {isPlaying ? 'さいしょから もういちど' : 'スタート'}
+          <button className="primary-button" onClick={startSession}>
+            {phase === 'idle' ? 'スタート' : 'もういちど'}
           </button>
           <button className="secondary-button" onClick={onBackToHome}>
             もどる
@@ -214,47 +218,47 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
       </section>
 
       <section className="rhythm-card play-card">
-        <div className={`clap-zone ${clapBurst ? 'burst' : ''}`} onClick={handleClap}>
-          <p className="phase-label">
-            {currentMeasure === 0 ? 'おてほんの 1小節' : 'みんなで まねする'}
-          </p>
+        <div className={`clap-zone ${phase === 'copy' ? 'active' : ''}`} onClick={handleClap}>
+          <p className="phase-label">{message}</p>
           <div className="clap-button">
             <span role="img" aria-hidden="true">👏</span>
           </div>
-          <p className="clap-hint">ここを たっぷり たたこう！</p>
+          <p className="clap-hint">
+            {phase === 'copy' ? 'ここを たたいて まねしてみよう' : 'スタートすると ここから はじまるよ'}
+          </p>
         </div>
 
         <div className="status-panel">
           <div className="status-box">
-            <span className="status-label">いまの りズム</span>
-            <strong>{selectedPreset.label}</strong>
+            <span className="status-label">いまの むずかしさ</span>
+            <strong>{DIFFICULTY_META[difficulty].label}</strong>
           </div>
           <div className="status-box">
-            <span className="status-label">スコア</span>
-            <strong>{score}</strong>
+            <span className="status-label">たたいたかず</span>
+            <strong>{tapCount}</strong>
           </div>
           <div className="status-box wide">
             <span className="status-label">おしらせ</span>
-            <strong>{feedback}</strong>
+            <strong>{typeof countdownValue === 'number' ? `${countdownValue}・` : countdownValue}</strong>
           </div>
         </div>
 
         <div className="beat-row" aria-label="beat indicators">
-          {selectedPreset.pattern.map((beat, index) => (
+          {currentPreset.pattern.map((beat, index) => (
             <span
-              key={`${selectedPreset.id}-${index}`}
-              className={`beat-pill ${currentBeat === index ? 'active' : ''} ${beat === 1 ? 'strong' : ''}`}
+              key={`${currentPreset.label}-${index}`}
+              className={`beat-pill ${activeBeat === index ? 'active' : ''} ${beat === 1 ? 'strong' : ''}`}
             >
               {beat === 1 ? '♪' : '・'}
             </span>
           ))}
         </div>
 
-        {showSummary && (
+        {phase === 'finished' && (
           <div className="summary-box">
             <h3>おわり！</h3>
-            <p>{score}かい ぴったり たたけたよ</p>
-            <p>{completedRounds}回 ちょうせんしたよ</p>
+            <p>うまくできたかな？</p>
+            <p>むずかしさを えらびなおしてね</p>
           </div>
         )}
       </section>
