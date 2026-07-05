@@ -268,6 +268,8 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  transform: scaleX(-1);
+  -webkit-transform: scaleX(-1);
 }
 
 .hidden-canvas {
@@ -446,6 +448,63 @@
   font-size: 2.2rem;
   line-height: 1.6;
   color: var(--text-color);
+}
+
+.discussion-rainbow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.discussion-photo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.7);
+  border: 2px solid rgba(0,0,0,0.08);
+  min-width: 92px;
+}
+
+.discussion-photo-card.empty {
+  opacity: 0.8;
+}
+
+.discussion-photo-frame {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 3px solid rgba(255,255,255,0.8);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.discussion-photo-image {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  border: 3px solid rgba(255,255,255,0.8);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.discussion-photo-frame.empty-frame {
+  background: linear-gradient(135deg, #fbe9e0, #e8f4ff);
+}
+
+.discussion-photo-label {
+  font-size: 1rem;
+  color: var(--text-color);
+  font-weight: 700;
+}
+
+.discussion-result-text {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  margin-top: 16px;
 }
 
 .discussion-controls {

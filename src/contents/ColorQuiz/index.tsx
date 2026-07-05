@@ -9,6 +9,11 @@ interface ColorData {
   roma: string;
 }
 
+interface CollectedColor {
+  color: ColorData;
+  imageDataUrl?: string;
+}
+
 const RAINBOW_COLORS: ColorData[] = [
   { name: 'あか', hex: '#E55B5B', roma: 'aka' },
   { name: 'おれんじ', hex: '#F4A261', roma: 'orenji' },
@@ -42,84 +47,22 @@ function shuffleRainbowOrder() {
   return order;
 }
 
-// Helper functions -------------------------------------------------------
-function hexToRgb(hex: string) {
-  const cleaned = hex.replace('#', '');
-  const bigint = parseInt(cleaned, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return { r, g, b };
-}
+function captureVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
 
-function rgbToHsl(r: number, g: number, b: number) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-  return { h: h * 360, s: s * 100, l: l * 100 };
-}
+  const width = video.videoWidth || 320;
+  const height = video.videoHeight || 240;
+  canvas.width = width;
+  canvas.height = height;
 
-function hueDistance(a: number, b: number) {
-  const diff = Math.abs(a - b);
-  return Math.min(diff, 360 - diff);
-}
+  ctx.save();
+  ctx.translate(width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, width, height);
+  ctx.restore();
 
-function startScanning(
-  video: HTMLVideoElement,
-  canvas: HTMLCanvasElement,
-  targetHex: string,
-  onMatch: () => void,
-  onNoMatch: () => void
-) {
-  const ctx = canvas.getContext('2d')!;
-  const targetRgb = hexToRgb(targetHex);
-  const { h: targetH, l: targetL } = rgbToHsl(targetRgb.r, targetRgb.g, targetRgb.b);
-  const sampleSize = 10;
-
-  function loop() {
-    if (video.videoWidth === 0) {
-      requestAnimationFrame(loop);
-      return;
-    }
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imgData = ctx.getImageData(
-      canvas.width / 2 - sampleSize / 2,
-      canvas.height / 2 - sampleSize / 2,
-      sampleSize,
-      sampleSize
-    );
-    const data = imgData.data;
-    let r = 0, g = 0, b = 0;
-    const pixelCount = sampleSize * sampleSize;
-    for (let i = 0; i < data.length; i += 4) {
-      r += data[i];
-      g += data[i + 1];
-      b += data[i + 2];
-    }
-    r = Math.round(r / pixelCount);
-    g = Math.round(g / pixelCount);
-    b = Math.round(b / pixelCount);
-    const { h, s, l } = rgbToHsl(r, g, b);
-    const hueDiff = hueDistance(h, targetH);
-    if (hueDiff <= 25 && s >= 30 && Math.abs(l - targetL) <= 20) {
-      onMatch();
-    } else {
-      onNoMatch();
-    }
-    requestAnimationFrame(loop);
-  }
-  loop();
+  return canvas.toDataURL('image/png');
 }
 
 // Component --------------------------------------------------------------
@@ -130,7 +73,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const [showDiscussion, setShowDiscussion] = useState<boolean>(false);
   const [currentPrompt, setCurrentPrompt] = useState<string>('');
   const [rainbowOrder, setRainbowOrder] = useState<number[]>([]);
-  const [collectedColors, setCollectedColors] = useState<ColorData[]>([]);
+  const [collectedColors, setCollectedColors] = useState<CollectedColor[]>([]);
 
   // Hunt phase state
   const [huntActive, setHuntActive] = useState<boolean>(false);
@@ -198,35 +141,15 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
     if (showDiscussion) sound.playDiscuss();
   }, [showDiscussion]);
 
-  // Scan phase – start camera and scanning loop
+  // Scan phase – start camera
   useEffect(() => {
     if (!scanActive) return;
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video) return;
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
         video.srcObject = stream;
-        video.play();
-        setTimeout(() => {
-          startScanning(
-            video,
-            canvas,
-            currentColor.hex,
-            () => {
-              setScanSuccess(true);
-              sound.playSuccess();
-              setTimeout(() => {
-                const tracks = (video.srcObject as MediaStream).getTracks();
-                tracks.forEach(t => t.stop());
-                setScanActive(false);
-                setScanSuccess(false);
-                handleNext(true);
-              }, 1500);
-            },
-            () => {}
-          );
-        }, 500);
+        void video.play();
       })
       .catch(err => {
         console.warn('Camera access error:', err);
@@ -238,9 +161,9 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
         tracks.forEach(t => t.stop());
       }
     };
-  }, [scanActive, currentColor.hex]);
+  }, [scanActive]);
 
-  const handleNext = (collected = false) => {
+  const handleNext = (collected = false, imageDataUrl?: string) => {
     sound.playPop();
     const nextCount = questionCount + 1;
     setQuestionCount(nextCount);
@@ -248,7 +171,9 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
     if (collected) {
       const color = RAINBOW_COLORS[currentColorIndex];
       setCollectedColors(prev => (
-        prev.some(item => item.name === color.name) ? prev : [...prev, color]
+        prev.some(item => item.color.name === color.name)
+          ? prev
+          : [...prev, { color, imageDataUrl }]
       ));
     }
 
@@ -281,6 +206,23 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
     setScanActive(true);
   };
 
+  const handleRegisterFound = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) {
+      setScanActive(false);
+      handleNext(true);
+      return;
+    }
+
+    const imageDataUrl = captureVideoFrame(video, canvas);
+    const tracks = (video.srcObject as MediaStream | null)?.getTracks() ?? [];
+    tracks.forEach(track => track.stop());
+    setScanActive(false);
+    setScanSuccess(false);
+    handleNext(true, imageDataUrl ?? undefined);
+  };
+
   // User clicks "探しにいく！" on the answer reveal screen
   const handleStartHunt = () => {
     sound.playPop();
@@ -308,10 +250,14 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
             <p className="discussion-prompt">{currentPrompt}</p>
             <div className="discussion-rainbow" role="list" aria-label="集めた虹の色">
               {collectedColors.length > 0 ? (
-                collectedColors.map(color => (
-                  <div key={color.name} className="discussion-photo-card" role="listitem">
-                    <div className="discussion-photo-frame" style={{ backgroundColor: color.hex }} />
-                    <span className="discussion-photo-label">{color.name}</span>
+                collectedColors.map(item => (
+                  <div key={item.color.name} className="discussion-photo-card" role="listitem">
+                    {item.imageDataUrl ? (
+                      <img className="discussion-photo-image" src={item.imageDataUrl} alt={item.color.name} />
+                    ) : (
+                      <div className="discussion-photo-frame" style={{ backgroundColor: item.color.hex }} />
+                    )}
+                    <span className="discussion-photo-label">{item.color.name}</span>
                   </div>
                 ))
               ) : (
@@ -380,21 +326,15 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
             </div>
           )}
 
-          {/* Manual skip button */}
           {!scanSuccess && (
             <button
               className="scan-skip-button"
               onClick={() => {
                 sound.playPop();
-                if (videoRef.current && videoRef.current.srcObject) {
-                  const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-                  tracks.forEach(t => t.stop());
-                }
-                setScanActive(false);
-                handleNext();
+                handleRegisterFound();
               }}
             >
-              パスする（つぎへ）➔
+              みつけた（シャッター）📸
             </button>
           )}
         </div>
