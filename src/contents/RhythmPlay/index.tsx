@@ -3,12 +3,18 @@ import { sound } from '../../utils/sound';
 import './RhythmPlay.css';
 
 type Difficulty = 'easy' | 'normal' | 'hard' | 'insane';
-type SessionPhase = 'idle' | 'countdown' | 'demo' | 'copy' | 'finished';
+type SessionPhase = 'idle' | 'countdown' | 'playing' | 'finished';
+type SessionStepKind = 'demo' | 'copy';
 
 interface RhythmPreset {
   pattern: number[];
   tempo: number;
   label: string;
+}
+
+interface SessionStep {
+  kind: SessionStepKind;
+  preset: RhythmPreset;
 }
 
 const DIFFICULTY_META: Record<Difficulty, { label: string; hint: string; tempo: number }> = {
@@ -18,19 +24,26 @@ const DIFFICULTY_META: Record<Difficulty, { label: string; hint: string; tempo: 
   insane: { label: 'おに', hint: 'たくさん たたこう', tempo: 124 }
 };
 
-function buildSessionPlan(difficulty: Difficulty): RhythmPreset[] {
+function buildSessionPlan(difficulty: Difficulty): SessionStep[] {
   if (difficulty === 'easy') {
+    const preset: RhythmPreset = { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4' };
     return [
-      { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4' },
-      { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4' }
+      { kind: 'demo', preset },
+      { kind: 'copy', preset },
+      { kind: 'demo', preset },
+      { kind: 'copy', preset }
     ];
   }
 
   return [
-    { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4' },
-    { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ' },
-    { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4' },
-    { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく' }
+    { kind: 'demo', preset: { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4' } },
+    { kind: 'copy', preset: { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4' } },
+    { kind: 'demo', preset: { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ' } },
+    { kind: 'copy', preset: { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ' } },
+    { kind: 'demo', preset: { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4' } },
+    { kind: 'copy', preset: { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4' } },
+    { kind: 'demo', preset: { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく' } },
+    { kind: 'copy', preset: { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく' } }
   ];
 }
 
@@ -43,9 +56,8 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [countdownValue, setCountdownValue] = useState<number | 'スタート'>(3);
   const [message, setMessage] = useState('むずかしさを えらんでね');
-  const [currentPreset, setCurrentPreset] = useState<RhythmPreset>(buildSessionPlan('easy')[0]);
+  const [currentPreset, setCurrentPreset] = useState<RhythmPreset>(buildSessionPlan('easy')[0].preset);
   const [activeBeat, setActiveBeat] = useState(-1);
-  const [tapCount, setTapCount] = useState(0);
   const timerRef = useRef<number | null>(null);
 
   const sessionPlan = useMemo(() => buildSessionPlan(difficulty), [difficulty]);
@@ -81,7 +93,11 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
       }
 
       setActiveBeat(beatIndex);
-      sound.playPop();
+      if (preset.pattern[beatIndex] === 1) {
+        sound.playClap();
+      } else {
+        sound.playPop();
+      }
       beatIndex += 1;
     };
 
@@ -114,56 +130,33 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
 
   const startSession = () => {
     clearTimer();
-    setPhase('countdown');
-    setTapCount(0);
     setActiveBeat(-1);
+    setPhase('countdown');
     setMessage('おてほん');
-    setCurrentPreset(sessionPlan[0]);
+    setCountdownValue(3);
 
-    const startDemo = (index: number) => {
-      const preset = sessionPlan[index];
-      setCurrentPreset(preset);
-      setMessage('おてほん');
-      setCountdownValue('スタート');
-      setPhase('demo');
-      playPattern(preset, () => {
-        const nextIndex = index + 1;
-        if (nextIndex >= sessionPlan.length) {
-          setPhase('finished');
-          setMessage('うまくできたかな？');
-          setCountdownValue('スタート');
-          return;
-        }
+    const runNextStep = (index: number) => {
+      if (index >= sessionPlan.length) {
+        setPhase('finished');
+        setMessage('うまくできたかな？');
+        setCountdownValue('スタート');
+        return;
+      }
 
-        runCountdown('まねしてみてね', () => {
-          setPhase('copy');
-          setMessage('まねしてみてね');
-          setCountdownValue('スタート');
-          playPattern(preset, () => {
-            startDemo(nextIndex);
-          });
+      const step = sessionPlan[index];
+      const instruction = step.kind === 'demo' ? 'おてほん' : 'まねしてみてね';
+      setCurrentPreset(step.preset);
+
+      runCountdown(instruction, () => {
+        setPhase('playing');
+        setMessage(instruction);
+        playPattern(step.preset, () => {
+          runNextStep(index + 1);
         });
       });
     };
 
-    runCountdown('おてほん', () => {
-      setPhase('demo');
-      startDemo(0);
-    });
-  };
-
-  const handleClap = () => {
-    if (phase !== 'copy') {
-      setMessage('まだ まねしてみてねの じかんじゃないよ');
-      return;
-    }
-
-    sound.playClap();
-    setTapCount((prev) => prev + 1);
-    setMessage('チャ！');
-    window.setTimeout(() => {
-      setMessage('まねしてみてね');
-    }, 250);
+    runNextStep(0);
   };
 
   const handleDifficultyChange = (next: Difficulty) => {
@@ -174,6 +167,54 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
     setCountdownValue(3);
     setActiveBeat(-1);
   };
+
+  const resetToSelection = () => {
+    setPhase('idle');
+    setMessage('むずかしさを えらんでね');
+    setCountdownValue(3);
+    setActiveBeat(-1);
+    clearTimer();
+  };
+
+  if (phase !== 'idle') {
+    return (
+      <div className="rhythm-stage-screen">
+        <div className="stage-panel">
+          <p className="stage-eyebrow">{DIFFICULTY_META[difficulty].label}</p>
+          <h2 className="stage-title">{message}</h2>
+          <p className="stage-subtitle">
+            {phase === 'countdown'
+              ? 'お手本を みて きいて まねしてみよう'
+              : 'おてほんや まねしてみてねを きいて みてみよう'}
+          </p>
+
+          <div className="countdown-circle">
+            {typeof countdownValue === 'number' ? countdownValue : countdownValue}
+          </div>
+
+          <div className="beat-row stage-beats" aria-label="beat indicators">
+            {currentPreset.pattern.map((beat, index) => (
+              <span
+                key={`${currentPreset.label}-${index}`}
+                className={`beat-pill ${activeBeat === index ? 'active' : ''} ${beat === 1 ? 'strong' : ''}`}
+              >
+                {beat === 1 ? '👏' : '・'}
+              </span>
+            ))}
+          </div>
+
+          {phase === 'finished' && (
+            <div className="finish-box">
+              <h3>うまくできたかな？</h3>
+              <button className="primary-button" onClick={resetToSelection}>
+                むずかしさを えらびなおす
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rhythm-play-page">
@@ -209,58 +250,12 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
 
         <div className="control-actions">
           <button className="primary-button" onClick={startSession}>
-            {phase === 'idle' ? 'スタート' : 'もういちど'}
+            スタート
           </button>
           <button className="secondary-button" onClick={onBackToHome}>
             もどる
           </button>
         </div>
-      </section>
-
-      <section className="rhythm-card play-card">
-        <div className={`clap-zone ${phase === 'copy' ? 'active' : ''}`} onClick={handleClap}>
-          <p className="phase-label">{message}</p>
-          <div className="clap-button">
-            <span role="img" aria-hidden="true">👏</span>
-          </div>
-          <p className="clap-hint">
-            {phase === 'copy' ? 'ここを たたいて まねしてみよう' : 'スタートすると ここから はじまるよ'}
-          </p>
-        </div>
-
-        <div className="status-panel">
-          <div className="status-box">
-            <span className="status-label">いまの むずかしさ</span>
-            <strong>{DIFFICULTY_META[difficulty].label}</strong>
-          </div>
-          <div className="status-box">
-            <span className="status-label">たたいたかず</span>
-            <strong>{tapCount}</strong>
-          </div>
-          <div className="status-box wide">
-            <span className="status-label">おしらせ</span>
-            <strong>{typeof countdownValue === 'number' ? `${countdownValue}・` : countdownValue}</strong>
-          </div>
-        </div>
-
-        <div className="beat-row" aria-label="beat indicators">
-          {currentPreset.pattern.map((beat, index) => (
-            <span
-              key={`${currentPreset.label}-${index}`}
-              className={`beat-pill ${activeBeat === index ? 'active' : ''} ${beat === 1 ? 'strong' : ''}`}
-            >
-              {beat === 1 ? '♪' : '・'}
-            </span>
-          ))}
-        </div>
-
-        {phase === 'finished' && (
-          <div className="summary-box">
-            <h3>おわり！</h3>
-            <p>うまくできたかな？</p>
-            <p>むずかしさを えらびなおしてね</p>
-          </div>
-        )}
       </section>
     </div>
   );
