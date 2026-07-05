@@ -12,8 +12,8 @@ export interface ContentItem {
 export const contentsRegistry: ContentItem[] = [
   {
     id: 'color-quiz',
-    title: 'いろクイズ',
-    description: 'なにいろかな？ 10びょうたったら ひらがなで なまえがでてくるよ',
+    title: 'にじをあつめて',
+    description: 'いろんな いろを みつけて、にじを あつめよう！',
     icon: '🎨',
     component: ColorQuiz
   }
