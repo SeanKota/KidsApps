@@ -1,5 +1,6 @@
 import React from 'react';
 import ColorQuiz from './ColorQuiz';
+import RhythmPlay from './RhythmPlay';
 
 export interface ContentItem {
   id: string;
@@ -16,6 +17,13 @@ export const contentsRegistry: ContentItem[] = [
     description: 'いろんな いろを みつけて、にじを あつめよう！',
     icon: '🎨',
     component: ColorQuiz
+  },
+  {
+    id: 'rhythm-play',
+    title: 'リズムあそび',
+    description: 'リズムにあわせててをたたこう',
+    icon: '🥁',
+    component: RhythmPlay
   }
   // 今後新しいコンテンツを追加する場合は、ここにオブジェクトを追加するだけで自動的にホーム画面に並びます。
   // 例:
