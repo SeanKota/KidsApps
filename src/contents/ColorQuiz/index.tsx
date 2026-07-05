@@ -20,7 +20,7 @@ const RAINBOW_COLORS: ColorData[] = [
   { name: 'きいろ', hex: '#E9C46A', roma: 'kiiro' },
   { name: 'みどり', hex: '#52B788', roma: 'midori' },
   { name: 'あお', hex: '#4A90E2', roma: 'ao' },
-  { name: 'こん', hex: '#5B6CFF', roma: 'kon' },
+  { name: 'ぴんく', hex: '#F15BB5', roma: 'pinku' },
   { name: 'むらさき', hex: '#9B5DE5', roma: 'murasaki' }
 ];
 
@@ -47,6 +47,40 @@ function shuffleRainbowOrder() {
   return order;
 }
 
+function hexToRgb(hex: string) {
+  const cleaned = hex.replace('#', '');
+  const bigint = parseInt(cleaned, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return { r, g, b };
+}
+
+function rgbToHsl(r: number, g: number, b: number) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+function hueDistance(a: number, b: number) {
+  const diff = Math.abs(a - b);
+  return Math.min(diff, 360 - diff);
+}
+
 function captureVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
@@ -65,6 +99,49 @@ function captureVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   return canvas.toDataURL('image/png');
 }
 
+function isLikelyColorMatch(video: HTMLVideoElement, canvas: HTMLCanvasElement, targetHex: string) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx || video.videoWidth === 0) return false;
+
+  const width = video.videoWidth || 320;
+  const height = video.videoHeight || 240;
+  canvas.width = width;
+  canvas.height = height;
+
+  ctx.save();
+  ctx.translate(width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, width, height);
+  ctx.restore();
+
+  const sampleSize = 14;
+  const imgData = ctx.getImageData(
+    Math.floor(width / 2 - sampleSize / 2),
+    Math.floor(height / 2 - sampleSize / 2),
+    sampleSize,
+    sampleSize
+  );
+  const data = imgData.data;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  const pixelCount = sampleSize * sampleSize;
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+  }
+  r = Math.round(r / pixelCount);
+  g = Math.round(g / pixelCount);
+  b = Math.round(b / pixelCount);
+
+  const { h, s, l } = rgbToHsl(r, g, b);
+  const targetRgb = hexToRgb(targetHex);
+  const { h: targetH, l: targetL } = rgbToHsl(targetRgb.r, targetRgb.g, targetRgb.b);
+  const hueDiff = hueDistance(h, targetH);
+  return hueDiff <= 35 && s >= 20 && Math.abs(l - targetL) <= 30;
+}
+
 // Component --------------------------------------------------------------
 const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const [currentColorIndex, setCurrentColorIndex] = useState<number>(0);
@@ -74,6 +151,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const [currentPrompt, setCurrentPrompt] = useState<string>('');
   const [rainbowOrder, setRainbowOrder] = useState<number[]>([]);
   const [collectedColors, setCollectedColors] = useState<CollectedColor[]>([]);
+  const [selectedImage, setSelectedImage] = useState<{src: string; alt: string} | null>(null);
 
   // Hunt phase state
   const [huntActive, setHuntActive] = useState<boolean>(false);
@@ -217,10 +295,14 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
 
     const imageDataUrl = captureVideoFrame(video, canvas);
     const tracks = (video.srcObject as MediaStream | null)?.getTracks() ?? [];
+    const likelyMatch = isLikelyColorMatch(video, canvas, currentColor.hex);
     tracks.forEach(track => track.stop());
     setScanActive(false);
-    setScanSuccess(false);
-    handleNext(true, imageDataUrl ?? undefined);
+    setScanSuccess(likelyMatch);
+    setTimeout(() => {
+      setScanSuccess(false);
+      handleNext(true, imageDataUrl ?? undefined);
+    }, likelyMatch ? 700 : 0);
   };
 
   // User clicks "探しにいく！" on the answer reveal screen
@@ -253,7 +335,13 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
                 collectedColors.map(item => (
                   <div key={item.color.name} className="discussion-photo-card" role="listitem">
                     {item.imageDataUrl ? (
-                      <img className="discussion-photo-image" src={item.imageDataUrl} alt={item.color.name} />
+                      <button
+                        type="button"
+                        className="discussion-photo-button"
+                        onClick={() => setSelectedImage({ src: item.imageDataUrl!, alt: item.color.name })}
+                      >
+                        <img className="discussion-photo-image" src={item.imageDataUrl} alt={item.color.name} />
+                      </button>
                     ) : (
                       <div className="discussion-photo-frame" style={{ backgroundColor: item.color.hex }} />
                     )}
@@ -269,6 +357,11 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
             </div>
             <p className="discussion-result-text">にじが かんせいしたよ！ いろを ひとつずつ みつけて つなげよう。</p>
           </div>
+          {selectedImage && (
+            <div className="discussion-image-modal" onClick={() => setSelectedImage(null)}>
+              <img className="discussion-image-modal-content" src={selectedImage.src} alt={selectedImage.alt} />
+            </div>
+          )}
           <div className="discussion-controls">
             <button className="discussion-button" onClick={handleCloseDiscussion}>おわる（ほーむへ）🏠</button>
           </div>
