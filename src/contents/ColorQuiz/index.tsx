@@ -163,6 +163,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const [scanSuccess, setScanSuccess] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const autoCaptureTriggeredRef = useRef<boolean>(false);
 
   const timerRef = useRef<number | null>(null);
   const currentColor = RAINBOW_COLORS[currentColorIndex] ?? RAINBOW_COLORS[0];
@@ -224,6 +225,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
     if (!scanActive) return;
     const video = videoRef.current;
     if (!video) return;
+    autoCaptureTriggeredRef.current = false;
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
         video.srcObject = stream;
@@ -240,6 +242,45 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
       }
     };
   }, [scanActive]);
+
+  useEffect(() => {
+    if (!scanActive) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    let frameId: number;
+    const checkFrame = () => {
+      if (!scanActive || autoCaptureTriggeredRef.current) return;
+      if (video.videoWidth === 0) {
+        frameId = window.requestAnimationFrame(checkFrame);
+        return;
+      }
+
+      const matched = isLikelyColorMatch(video, canvas, currentColor.hex);
+      if (matched) {
+        autoCaptureTriggeredRef.current = true;
+        setScanSuccess(true);
+        sound.playSuccess();
+        const imageDataUrl = captureVideoFrame(video, canvas);
+        const tracks = (video.srcObject as MediaStream | null)?.getTracks() ?? [];
+        tracks.forEach(track => track.stop());
+        window.setTimeout(() => {
+          setScanActive(false);
+          setScanSuccess(false);
+          handleNext(true, imageDataUrl ?? undefined);
+        }, 700);
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(checkFrame);
+    };
+
+    frameId = window.requestAnimationFrame(checkFrame);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [scanActive, currentColor.hex]);
 
   const handleNext = (collected = false, imageDataUrl?: string) => {
     sound.playPop();
