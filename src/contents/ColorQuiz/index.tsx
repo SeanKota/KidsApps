@@ -9,19 +9,14 @@ interface ColorData {
   roma: string;
 }
 
-const COLORS: ColorData[] = [
+const RAINBOW_COLORS: ColorData[] = [
   { name: 'あか', hex: '#E55B5B', roma: 'aka' },
-  { name: 'あお', hex: '#4A90E2', roma: 'ao' },
-  { name: 'みどり', hex: '#52B788', roma: 'midori' },
-  { name: 'きいろ', hex: '#E9C46A', roma: 'kiiro' },
   { name: 'おれんじ', hex: '#F4A261', roma: 'orenji' },
-  { name: 'むらさき', hex: '#9B5DE5', roma: 'murasaki' },
-  { name: 'ぴんく', hex: '#F15BB5', roma: 'pinku' },
-  { name: 'ちゃいろ', hex: '#9A7B56', roma: 'chairo' },
-  { name: 'くろ', hex: '#2F3E46', roma: 'kuro' },
-  { name: 'しろ', hex: '#E5E9EC', roma: 'shiro' },
-  { name: 'はいいろ', hex: '#7F8C8D', roma: 'haiiro' },
-  { name: 'みずいろ', hex: '#4EA8DE', roma: 'mizuiro' }
+  { name: 'きいろ', hex: '#E9C46A', roma: 'kiiro' },
+  { name: 'みどり', hex: '#52B788', roma: 'midori' },
+  { name: 'あお', hex: '#4A90E2', roma: 'ao' },
+  { name: 'こん', hex: '#5B6CFF', roma: 'kon' },
+  { name: 'むらさき', hex: '#9B5DE5', roma: 'murasaki' }
 ];
 
 const DISCUSSION_PROMPTS = [
@@ -36,6 +31,15 @@ const DISCUSSION_PROMPTS = [
 
 interface ColorQuizProps {
   onBackToHome: () => void;
+}
+
+function shuffleRainbowOrder() {
+  const order = Array.from({ length: RAINBOW_COLORS.length }, (_, i) => i);
+  for (let i = order.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
 }
 
 // Helper functions -------------------------------------------------------
@@ -125,6 +129,8 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const [questionCount, setQuestionCount] = useState<number>(0);
   const [showDiscussion, setShowDiscussion] = useState<boolean>(false);
   const [currentPrompt, setCurrentPrompt] = useState<string>('');
+  const [rainbowOrder, setRainbowOrder] = useState<number[]>([]);
+  const [collectedColors, setCollectedColors] = useState<ColorData[]>([]);
 
   // Hunt phase state
   const [huntActive, setHuntActive] = useState<boolean>(false);
@@ -137,15 +143,14 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Recent colors to avoid repeats
-  const [recentColors, setRecentColors] = useState<number[]>([]);
-
   const timerRef = useRef<number | null>(null);
-  const currentColor = COLORS[currentColorIndex];
+  const currentColor = RAINBOW_COLORS[currentColorIndex] ?? RAINBOW_COLORS[0];
 
-  // Initialise first colour
+  // Initialise rainbow order
   useEffect(() => {
-    selectRandomColor();
+    const initialOrder = shuffleRainbowOrder();
+    setRainbowOrder(initialOrder);
+    setCurrentColorIndex(initialOrder[0]);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
@@ -216,7 +221,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
                 tracks.forEach(t => t.stop());
                 setScanActive(false);
                 setScanSuccess(false);
-                handleNext();
+                handleNext(true);
               }, 1500);
             },
             () => {}
@@ -235,30 +240,26 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
     };
   }, [scanActive, currentColor.hex]);
 
-  // Random colour selection avoiding recent repeats
-  const selectRandomColor = () => {
-    const available = COLORS.map((_, i) => i).filter(i => !recentColors.includes(i));
-    const pool = available.length > 0 ? available : COLORS.map((_, i) => i);
-    const idx = pool[Math.floor(Math.random() * pool.length)];
-    setCurrentColorIndex(idx);
-    setRecentColors(prev => {
-      const next = [...prev, idx];
-      if (next.length > 4) next.shift();
-      return next;
-    });
-  };
-
-  const handleNext = () => {
+  const handleNext = (collected = false) => {
     sound.playPop();
     const nextCount = questionCount + 1;
     setQuestionCount(nextCount);
-    if (nextCount % 8 === 0) {
+
+    if (collected) {
+      const color = RAINBOW_COLORS[currentColorIndex];
+      setCollectedColors(prev => (
+        prev.some(item => item.name === color.name) ? prev : [...prev, color]
+      ));
+    }
+
+    if (nextCount >= RAINBOW_COLORS.length) {
       const randomPrompt = DISCUSSION_PROMPTS[Math.floor(Math.random() * DISCUSSION_PROMPTS.length)];
       setCurrentPrompt(randomPrompt);
       setShowDiscussion(true);
     } else {
-      selectRandomColor();
+      setCurrentColorIndex(rainbowOrder[nextCount]);
     }
+
     setHuntActive(false);
     setScanActive(false);
     setScanSuccess(false);
@@ -266,8 +267,7 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
 
   const handleCloseDiscussion = () => {
     sound.playPop();
-    setShowDiscussion(false);
-    selectRandomColor();
+    onBackToHome();
   };
 
   const handleHuntSkip = () => {
@@ -306,10 +306,25 @@ const ColorQuiz: React.FC<ColorQuizProps> = ({ onBackToHome }) => {
           </div>
           <div className="discussion-card">
             <p className="discussion-prompt">{currentPrompt}</p>
+            <div className="discussion-rainbow" role="list" aria-label="集めた虹の色">
+              {collectedColors.length > 0 ? (
+                collectedColors.map(color => (
+                  <div key={color.name} className="discussion-photo-card" role="listitem">
+                    <div className="discussion-photo-frame" style={{ backgroundColor: color.hex }} />
+                    <span className="discussion-photo-label">{color.name}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="discussion-photo-card empty">
+                  <div className="discussion-photo-frame empty-frame" />
+                  <span className="discussion-photo-label">まだ みつけてないよ</span>
+                </div>
+              )}
+            </div>
+            <p className="discussion-result-text">にじが かんせいしたよ！ いろを ひとつずつ みつけて つなげよう。</p>
           </div>
           <div className="discussion-controls">
-            <button className="discussion-button" onClick={handleCloseDiscussion}>おはなし おわり！ つぎのクイズへ ➔</button>
-            <button className="discussion-button secondary" onClick={() => { sound.playPop(); onBackToHome(); }}>おわる（ほーむへ）🏠</button>
+            <button className="discussion-button" onClick={handleCloseDiscussion}>おわる（ほーむへ）🏠</button>
           </div>
         </div>
       </div>
