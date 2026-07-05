@@ -10,6 +10,8 @@ interface RhythmPreset {
   pattern: number[];
   tempo: number;
   label: string;
+  meterLabel: string;
+  beatCount: number;
 }
 
 interface SessionStep {
@@ -26,7 +28,7 @@ const DIFFICULTY_META: Record<Difficulty, { label: string; hint: string; tempo: 
 
 function buildSessionPlan(difficulty: Difficulty): SessionStep[] {
   if (difficulty === 'easy') {
-    const preset: RhythmPreset = { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4' };
+    const preset: RhythmPreset = { pattern: [1, 0, 1, 0], tempo: 72, label: '4/4', meterLabel: '4/4', beatCount: 4 };
     return [
       { kind: 'demo', preset },
       { kind: 'copy', preset },
@@ -36,14 +38,14 @@ function buildSessionPlan(difficulty: Difficulty): SessionStep[] {
   }
 
   return [
-    { kind: 'demo', preset: { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4' } },
-    { kind: 'copy', preset: { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4' } },
-    { kind: 'demo', preset: { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ' } },
-    { kind: 'copy', preset: { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ' } },
-    { kind: 'demo', preset: { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4' } },
-    { kind: 'copy', preset: { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4' } },
-    { kind: 'demo', preset: { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく' } },
-    { kind: 'copy', preset: { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく' } }
+    { kind: 'demo', preset: { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4', meterLabel: '4/4', beatCount: 4 } },
+    { kind: 'copy', preset: { pattern: [1, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo, label: '4/4', meterLabel: '4/4', beatCount: 4 } },
+    { kind: 'demo', preset: { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ', meterLabel: '6/8', beatCount: 6 } },
+    { kind: 'copy', preset: { pattern: [1, 0, 0, 1, 0, 0], tempo: DIFFICULTY_META[difficulty].tempo + 4, label: 'ポリ', meterLabel: '6/8', beatCount: 6 } },
+    { kind: 'demo', preset: { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4', meterLabel: '3/4', beatCount: 3 } },
+    { kind: 'copy', preset: { pattern: [1, 0, 0, 0, 1, 0], tempo: DIFFICULTY_META[difficulty].tempo + 6, label: '3/4', meterLabel: '3/4', beatCount: 3 } },
+    { kind: 'demo', preset: { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく', meterLabel: '6/8', beatCount: 6 } },
+    { kind: 'copy', preset: { pattern: [1, 0, 1, 0, 0, 1], tempo: DIFFICULTY_META[difficulty].tempo + 8, label: 'みんぞく', meterLabel: '6/8', beatCount: 6 } }
   ];
 }
 
@@ -83,7 +85,7 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
     clearTimer();
     setActiveBeat(-1);
     let beatIndex = 0;
-    const stepMs = Math.max(360, Math.round(60000 / preset.tempo / 2));
+    const stepMs = Math.max(400, Math.round(60000 / preset.tempo));
 
     const tick = () => {
       if (beatIndex >= preset.pattern.length) {
@@ -105,24 +107,25 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
     timerRef.current = window.setInterval(tick, stepMs);
   };
 
-  const runCountdown = (instruction: string, onComplete: () => void) => {
+  const runCountdown = (instruction: string, tempo: number, onComplete: () => void) => {
     clearTimer();
     setPhase('countdown');
     setMessage(instruction);
     let count = 3;
+    const intervalMs = Math.max(400, Math.round(60000 / tempo));
 
     const showNext = () => {
       if (count === 0) {
         setCountdownValue('スタート');
         timerRef.current = window.setTimeout(() => {
           onComplete();
-        }, 700);
+        }, intervalMs);
         return;
       }
 
       setCountdownValue(count);
       count -= 1;
-      timerRef.current = window.setTimeout(showNext, 700);
+      timerRef.current = window.setTimeout(showNext, intervalMs);
     };
 
     showNext();
@@ -147,7 +150,7 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
       const instruction = step.kind === 'demo' ? 'おてほん' : 'まねしてみてね';
       setCurrentPreset(step.preset);
 
-      runCountdown(instruction, () => {
+      runCountdown(instruction, step.preset.tempo, () => {
         setPhase('playing');
         setMessage(instruction);
         playPattern(step.preset, () => {
@@ -192,14 +195,21 @@ const RhythmPlay: React.FC<RhythmPlayProps> = ({ onBackToHome }) => {
             {typeof countdownValue === 'number' ? countdownValue : countdownValue}
           </div>
 
+          <div className="meter-badge">
+            <span>{currentPreset.meterLabel}</span>
+            <span>{currentPreset.beatCount}拍子</span>
+          </div>
+
           <div className="beat-row stage-beats" aria-label="beat indicators">
             {currentPreset.pattern.map((beat, index) => (
-              <span
-                key={`${currentPreset.label}-${index}`}
-                className={`beat-pill ${activeBeat === index ? 'active' : ''} ${beat === 1 ? 'strong' : ''}`}
-              >
-                {beat === 1 ? '👏' : '・'}
-              </span>
+              <div className="beat-column" key={`${currentPreset.label}-${index}`}>
+                <span className="beat-number">{index + 1}</span>
+                <span
+                  className={`beat-pill ${activeBeat === index ? 'active' : ''} ${beat === 1 ? 'strong' : ''}`}
+                >
+                  {beat === 1 ? '✋' : '・'}
+                </span>
+              </div>
             ))}
           </div>
 
